@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>基金定投</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="基金定投">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e0f12" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+:root {
+  --bg: #f4f5f7; --card: #fff; --text: #16181d; --muted: #6b7280; --line: #e6e8ec;
+  --field: #f1f3f6; --accent: #2563eb; --accent-ink: #fff;
+  --up: #e5383b; --down: #12a15e; --danger: #d92d20;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0f12; --card: #191b20; --text: #eef0f3; --muted: #9aa1ad; --line: #2a2d34;
+    --field: #23262d; --accent: #5b8cff; --accent-ink: #fff;
+    --up: #ff5c5c; --down: #2fc47a; --danger: #ff6b5e;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+  padding: env(safe-area-inset-top) 0 calc(96px + env(safe-area-inset-bottom));
+  -webkit-text-size-adjust: 100%;
+}
+.num { font-variant-numeric: tabular-nums; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.muted { color: var(--muted); }
+button { font: inherit; color: inherit; cursor: pointer; }
+.wrap { max-width: 560px; margin: 0 auto; padding: 0 16px; }
+
+header { display: flex; align-items: center; gap: 8px; padding: 14px 0 10px; }
+header h1 { font-size: 22px; margin: 0; flex: 1; }
+.status { font-size: 12px; color: var(--muted); font-weight: 400; display: block; margin-top: 2px; }
+.icon-btn {
+  width: 38px; height: 38px; border-radius: 19px; border: 0; background: var(--card);
+  display: grid; place-items: center; box-shadow: var(--shadow);
+}
+.icon-btn svg { width: 20px; height: 20px; }
+.spin svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.card { background: var(--card); border-radius: 16px; box-shadow: var(--shadow); }
+.summary { padding: 18px 18px 16px; }
+.summary .label { font-size: 13px; color: var(--muted); }
+.summary .big { font-size: 32px; font-weight: 650; letter-spacing: -.5px; margin: 2px 0 14px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.grid3 .v { font-size: 16px; font-weight: 600; margin-top: 2px; }
+.summary .foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.summary .foot b { font-weight: 600; }
+
+.toolbar { display: flex; align-items: center; justify-content: space-between; margin: 20px 2px 8px; }
+.toolbar h2 { font-size: 15px; margin: 0; }
+.seg { display: flex; background: var(--field); border-radius: 9px; padding: 2px; }
+.seg button { border: 0; background: none; font-size: 12px; padding: 4px 9px; border-radius: 7px; color: var(--muted); }
+.seg button.on { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
+
+.list { display: flex; flex-direction: column; gap: 8px; }
+.fund { padding: 13px 14px; display: block; width: 100%; text-align: left; border: 0; }
+.fund .r1, .fund .r2 { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.fund .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.fund .mv { font-weight: 600; white-space: nowrap; }
+.fund .r2 { margin-top: 3px; font-size: 13px; }
+.fund .r3 { margin-top: 6px; font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 5px; background: var(--field); color: var(--muted); }
+.empty { text-align: center; padding: 48px 16px; color: var(--muted); }
+
+.fab {
+  position: fixed; right: max(16px, calc(50% - 264px)); bottom: calc(22px + env(safe-area-inset-bottom));
+  width: 56px; height: 56px; border-radius: 28px; border: 0; background: var(--accent); color: var(--accent-ink);
+  box-shadow: 0 6px 18px rgba(37,99,235,.35); display: grid; place-items: center;
+}
+.fab svg { width: 26px; height: 26px; }
+
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; z-index: 10; }
+.overlay.open { display: block; }
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; max-height: 92vh; overflow-y: auto;
+  background: var(--card); border-radius: 18px 18px 0 0;
+  padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+  max-width: 560px; margin: 0 auto; -webkit-overflow-scrolling: touch;
+}
+.sheet .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 10px; }
+.sheet h3 { margin: 0 0 4px; font-size: 18px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sheet h3 button { border: 0; background: none; color: var(--muted); font-size: 15px; padding: 4px; }
+.field { display: block; margin-top: 14px; }
+.field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
+input[type=text], input[type=date], input:not([type]) {
+  width: 100%; font: inherit; font-size: 16px; color: var(--text); background: var(--field);
+  border: 1px solid transparent; border-radius: 10px; padding: 10px 12px; outline: none; min-width: 0;
+  -webkit-appearance: none; appearance: none;
+}
+input:focus { border-color: var(--accent); }
+.row { display: flex; gap: 8px; align-items: stretch; }
+.row > * { flex: 1; min-width: 0; }
+.row > button, .row > .pm { flex: 0 0 auto; }
+.pm { width: 46px; border: 0; border-radius: 10px; background: var(--field); font-size: 18px; }
+.hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.info { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--field); font-size: 13px; }
+.info.err { color: var(--danger); }
+.group { margin-top: 18px; padding-top: 4px; border-top: 1px solid var(--line); }
+.group > .gt { font-weight: 600; margin-top: 12px; }
+details.group summary { font-weight: 600; margin-top: 12px; list-style: none; display: flex; justify-content: space-between; }
+details.group summary::-webkit-details-marker { display: none; }
+details.group summary::after { content: "展开"; font-weight: 400; font-size: 13px; color: var(--accent); }
+details.group[open] summary::after { content: "收起"; }
+.btn { display: block; width: 100%; border: 0; border-radius: 12px; padding: 13px; font-size: 16px; font-weight: 600; margin-top: 18px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.plain { background: var(--field); }
+.btn.danger { background: none; color: var(--danger); font-weight: 500; margin-top: 8px; }
+.btn:disabled { opacity: .5; }
+.small-btn { border: 0; border-radius: 10px; background: var(--field); padding: 0 14px; font-size: 15px; }
+.switch { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+.switch input { width: 44px; height: 26px; -webkit-appearance: none; appearance: none; background: var(--line); border-radius: 13px; position: relative; transition: background .2s; flex: 0 0 auto; }
+.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 10px; background: #fff; transition: transform .2s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.switch input:checked { background: var(--accent); }
+.switch input:checked::after { transform: translateX(18px); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; margin-top: 10px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; text-align: right; }
+.doc p { font-size: 14px; margin: 8px 0; }
+.doc ul { padding-left: 20px; margin: 8px 0; font-size: 14px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  background: rgba(20,20,24,.92); color: #fff; padding: 9px 16px; border-radius: 20px; font-size: 14px;
+  opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 20; max-width: calc(100% - 32px); text-align: center;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>基金定投<span class="status" id="status"></span></h1>
+    <button class="icon-btn" id="btn-refresh" aria-label="更新净值">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-settings" aria-label="设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>
+    </button>
+  </header>
+  <section class="card summary" id="summary"></section>
+  <div class="toolbar">
+    <h2 id="list-title">我的基金</h2>
+    <div class="seg" id="sort">
+      <button data-sort="mv">市值</button><button data-sort="profit">收益</button><button data-sort="rate">收益率</button><button data-sort="day">日涨跌</button>
+    </div>
+  </div>
+  <div class="list" id="list"></div>
+</div>
+<button class="fab" id="btn-add" aria-label="添加基金">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+<div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="import-file" accept="application/json,.json" hidden>
+
+<script>
+'use strict';
+const KEY = 'fund-dca.v1', NAV_KEY = 'fund-dca.nav.v1';
+const STALE_MS = 10 * 60 * 1000;
+const $ = s => document.querySelector(s);
+
+function load(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+let S = load(KEY, null) || { funds: [], sort: 'mv' };
+let C = load(NAV_KEY, null) || {};
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('保存失败：浏览器存储不可用'); } }
+function saveNav() { try { localStorage.setItem(NAV_KEY, JSON.stringify(C)); } catch (e) {} }
+
+// ---------- 工具 ----------
+// 净值时间戳是北京时间零点，加 8 小时后取 UTC 日期即为北京日期
+const bjDate = ms => new Date(ms + 8 * 3600e3).toISOString().slice(0, 10);
+const today = () => bjDate(Date.now());
+const short = d => d ? d.slice(5) : '';
+const fmt = (n, d = 2) => Number(n).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
+const signed = (n, d = 2) => (n > 0 ? '+' : '') + fmt(n, d);
+const cls = n => n > 0.000001 ? 'up' : n < -0.000001 ? 'down' : '';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function num(v) { const n = parseFloat(String(v ?? '').replace(/[,，¥￥\s]/g, '')); return Number.isFinite(n) ? n : null; }
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2400); }
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+// 分红按红利再投资折算（现金分红时总价值相同），拆分按比例调整份额
+function parseEvent(s) {
+  if (!s) return null;
+  let m = s.match(/派现金\s*([\d.]+)\s*元/);
+  if (m && +m[1] > 0) return { div: +m[1] };
+  m = s.match(/折算\s*([\d.]+)\s*份/);
+  if (m && +m[1] > 0) return { split: +m[1] };
+  return null;
+}
+
+// ---------- 拉取天天基金净值 ----------
+// 数据文件是 JS（定义全局变量），用 <script> 加载可以绕过跨域；全局变量会互相覆盖，所以逐个加载
+const GLOBALS = ['fS_name', 'fS_code', 'fund_Rate', 'ishb', 'Data_netWorthTrend'];
+let queue = Promise.resolve();
+function fetchFund(code) {
+  const job = queue.then(() => new Promise((resolve, reject) => {
+    GLOBALS.forEach(g => { window[g] = undefined; });
+    const s = document.createElement('script');
+    let done = false;
+    const finish = (err, val) => {
+      if (done) return; done = true; clearTimeout(timer); s.remove();
+      GLOBALS.forEach(g => { window[g] = undefined; });
+      err ? reject(err) : resolve(val);
+    };
+    const timer = setTimeout(() => finish(new Error('请求超时')), 20000);
+    s.onload = () => {
+      if (window.fS_code !== code) return finish(new Error('找不到基金 ' + code));
+      if (window.ishb === true || !Array.isArray(window.Data_netWorthTrend)) return finish(new Error('暂不支持货币基金'));
+      const series = window.Data_netWorthTrend.map(p => {
+        const r = [bjDate(p.x), +p.y, +p.equityReturn || 0];
+        const ev = parseEvent(p.unitMoney); if (ev) r.push(ev);
+        return r;
+      }).filter(r => r[1] > 0);
+      if (!series.length) return finish(new Error('没有净值数据'));
+      finish(null, { name: window.fS_name, rate: parseFloat(window.fund_Rate) || 0, series, fetchedAt: Date.now() });
+    };
+    s.onerror = () => finish(new Error('网络错误'));
+    s.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?t=${Date.now()}`;
+    document.head.appendChild(s);
+  }));
+  queue = job.catch(() => {});
+  return job;
+}
+
+// 只缓存计算需要的那段净值（从最早的持仓截至日开始，至少 30 个交易日）
+function storeNav(code, data) {
+  const asOfs = S.funds.filter(f => f.code === code).map(f => f.asOf).sort();
+  const sr = data.series;
+  let start = Math.max(0, sr.length - 30);
+  if (asOfs.length) {
+    const j = sr.findIndex(p => p[0] > asOfs[0]);
+    start = Math.min(start, j === -1 ? sr.length - 1 : Math.max(0, j - 1));
+  }
+  C[code] = { ...data, series: sr.slice(start) };
+  saveNav();
+}
+
+function navAt(series, date) {
+  let hit = null;
+  for (const p of series) { if (p[0] <= date) hit = p; else break; }
+  return hit;
+}
+// 今天之前的最后一个交易日：白天平台显示的份额一般包含到这一天的买入
+function lastTradeBefore(series, date) {
+  for (let i = series.length - 1; i >= 0; i--) if (series[i][0] < date) return series[i][0];
+  return series.length ? series[0][0] : date;
+}
+
+// ---------- 计算 ----------
+function compute(f) {
+  const c = C[f.code];
+  if (!c || !c.series || !c.series.length) return { ok: false, shares: f.shares, cost: f.cost };
+  const sr = c.series, last = sr[sr.length - 1], prev = sr.length > 1 ? sr[sr.length - 2] : null;
+  const fee = f.fee ?? c.rate ?? 0;
+  let shares = f.shares, cost = f.cost, buys = 0, prevShares = null;
+  for (const [d, nav, , ev] of sr) {
+    if (d <= f.asOf) continue;
+    if (d === last[0]) prevShares = shares;
+    if (ev && ev.split) shares *= ev.split;
+    if (ev && ev.div) shares += shares * ev.div / nav;
+    if (!f.paused && f.amount > 0) { shares += f.amount / (1 + fee / 100) / nav; cost += f.amount; buys++; }
+  }
+  if (prevShares === null) prevShares = shares;
+  const mv = shares * last[1];
+  const dayPct = last[2];
+  const dayProfit = prev && last[0] > f.asOf ? prevShares * prev[1] * dayPct / 100 : shares * last[1] * dayPct / (100 + dayPct);
+  return {
+    ok: true, shares, cost, mv, profit: mv - cost, rate: cost > 0 ? (mv - cost) / cost * 100 : 0,
+    nav: last[1], lastDate: last[0], dayPct, dayProfit, buys, fee, name: c.name
+  };
+}
+
+// 把截至最新净值日的结果固化为新的持仓快照（改定投额、暂停前调用，之前的笔数按旧设置算）
+function materialize(f) {
+  const r = compute(f);
+  if (!r.ok) return;
+  f.shares = r.shares; f.cost = r.cost;
+  if (r.lastDate > f.asOf) f.asOf = r.lastDate;
+}
+
+// ---------- 渲染 ----------
+function render() {
+  const rows = S.funds.map(f => ({ f, r: compute(f) }));
+  const ok = rows.filter(x => x.r.ok);
+  const sum = k => ok.reduce((a, x) => a + x.r[k], 0);
+  const mv = sum('mv'), cost = sum('cost'), profit = mv - cost, day = sum('dayProfit');
+  const daily = S.funds.filter(f => !f.paused).reduce((a, f) => a + (f.amount || 0), 0);
+  const activeN = S.funds.filter(f => !f.paused && f.amount > 0).length;
+  const lastDate = ok.reduce((a, x) => x.r.lastDate > a ? x.r.lastDate : a, '');
+  const missing = rows.length - ok.length;
+
+  $('#summary').innerHTML = `
+    <div class="label">总市值（元）</div>
+    <div class="big num">${fmt(mv)}</div>
+    <div class="grid3">
+      <div><div class="label">总投入</div><div class="v num">${fmt(cost)}</div></div>
+      <div><div class="label">持有收益</div><div class="v num ${cls(profit)}">${signed(profit)}</div></div>
+      <div><div class="label">收益率</div><div class="v num ${cls(profit)}">${signed(cost > 0 ? profit / cost * 100 : 0)}%</div></div>
+    </div>
+    <div class="foot">
+      <span>最近一日${lastDate ? `（${short(lastDate)}）` : ''} <b class="num ${cls(day)}">${signed(day)}</b></span>
+      <span>每日定投 <b class="num">¥${fmt(daily, daily % 1 ? 2 : 0)}</b> · ${activeN} 只</span>
+    </div>
+    ${missing ? `<div class="hint">${missing} 只基金还没拿到净值，未计入合计</div>` : ''}`;
+
+  document.querySelectorAll('#sort button').forEach(b => b.classList.toggle('on', b.dataset.sort === S.sort));
+  $('#list-title').textContent = `我的基金（${S.funds.length}）`;
+
+  const key = { mv: 'mv', profit: 'profit', rate: 'rate', day: 'dayPct' }[S.sort] || 'mv';
+  rows.sort((a, b) => (b.r.ok - a.r.ok) || ((b.r[key] || 0) - (a.r[key] || 0)));
+
+  if (!rows.length) {
+    $('#list').innerHTML = `<div class="empty">还没有基金<br>点右下角 <b>+</b> 添加第一只</div>`;
+    return;
+  }
+  $('#list').innerHTML = rows.map(({ f, r }) => {
+    const plan = f.paused ? '<span class="tag">已暂停</span>' : `每日 ¥${fmt(f.amount, f.amount % 1 ? 2 : 0)}`;
+    if (!r.ok) return `
+      <button class="card fund" data-id="${f.id}">
+        <div class="r1"><span class="name">${esc(f.name || f.code)}</span><span class="muted">等待净值…</span></div>
+        <div class="r3"><span>${f.code}</span><span>${plan}</span></div>
+      </button>`;
+    return `
+      <button class="card fund" data-id="${f.id}">
+        <div class="r1"><span class="name">${esc(r.name || f.name)}</span><span class="mv num">${fmt(r.mv)}</span></div>
+        <div class="r2"><span class="muted num">投入 ${fmt(r.cost)}</span><span class="num ${cls(r.profit)}">${signed(r.profit)}（${signed(r.rate)}%）</span></div>
+        <div class="r3 num"><span>${f.code}</span><span>净值 ${r.nav.toFixed(4)}（${short(r.lastDate)}）<span class="${cls(r.dayPct)}">${signed(r.dayPct)}%</span></span><span>${plan}</span></div>
+      </button>`;
+  }).join('');
+}
+
+function setStatus(text) { $('#status').textContent = text; }
+function idleStatus() {
+  const ts = S.funds.map(f => C[f.code]?.fetchedAt).filter(Boolean);
+  if (!ts.length) return setStatus('');
+  const t = new Date(Math.min(...ts));
+  setStatus(`净值更新于 ${t.getMonth() + 1}-${t.getDate()} ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`);
+}
+
+let busy = false;
+async function refreshAll(force) {
+  if (busy) return;
+  const codes = [...new Set(S.funds.map(f => f.code))];
+  const todo = codes.filter(c => force || !C[c] || Date.now() - C[c].fetchedAt > STALE_MS);
+  if (!todo.length) { if (force) toast('没有需要更新的基金'); return; }
+  busy = true; $('#btn-refresh').classList.add('spin');
+  const fails = [];
+  for (let i = 0; i < todo.length; i++) {
+    setStatus(`正在更新净值 ${i + 1}/${todo.length}`);
+    try {
+      const d = await fetchFund(todo[i]);
+      storeNav(todo[i], d);
+      S.funds.forEach(f => { if (f.code === todo[i] && d.name) f.name = d.name; });
+    } catch (e) { fails.push(todo[i]); }
+    render();
+  }
+  save();
+  busy = false; $('#btn-refresh').classList.remove('spin');
+  idleStatus();
+  if (fails.length) toast(`${fails.length} 只更新失败：${fails.join('、')}`);
+  else if (force) toast('净值已更新');
+}
+
+// ---------- 弹层 ----------
+function openSheet(html) { $('#sheet').innerHTML = `<div class="grab"></div>${html}`; $('#overlay').classList.add('open'); $('#sheet').scrollTop = 0; }
+function closeSheet() { $('#overlay').classList.remove('open'); }
+$('#overlay').addEventListener('click', e => { if (e.target.id === 'overlay') closeSheet(); });
+
+const holdingFields = (hintDate) => `
+  <label class="field"><span>持有金额（元）</span><input id="h-amt" inputmode="decimal" placeholder="例如 12345.67"></label>
+  <label class="field"><span>持有收益（元，亏损点 ± 变成负数）</span>
+    <div class="row"><input id="h-profit" inputmode="decimal" placeholder="例如 456.78"><button type="button" class="pm" id="h-pm">±</button></div></label>
+  <label class="field"><span>持有份额（选填，填了更准）</span><input id="h-shares" inputmode="decimal" placeholder="不填则按 持有金额 ÷ 净值 推算"></label>
+  <label class="field"><span>持仓截至的净值日期</span><input type="date" id="h-asof" value="${hintDate || ''}"></label>
+  <div class="hint">支付宝里白天看到的持仓，一般已包含到上一个交易日的定投，默认就填上一个交易日。这一天之后的定投，App 会按每天的净值自动累加。</div>`;
+
+function readHolding(series) {
+  const amt = num($('#h-amt').value), profit = num($('#h-profit').value) || 0, sh = num($('#h-shares').value);
+  const asOf = $('#h-asof').value;
+  if (amt === null && sh === null) return null;
+  if (!asOf) throw new Error('请填写持仓截至日期');
+  const p = navAt(series, asOf);
+  if (!p) throw new Error('截至日期早于基金成立日');
+  const shares = sh ?? amt / p[1];
+  const value = amt ?? shares * p[1];
+  return { shares, cost: value - profit, asOf };
+}
+
+function bindPm() {
+  const b = $('#h-pm'); if (!b) return;
+  b.onclick = () => { const i = $('#h-profit'); const v = i.value.trim(); i.value = v.startsWith('-') ? v.slice(1) : '-' + v; };
+}
+
+// 添加
+let pending = null;
+function openAdd() {
+  pending = null;
+  openSheet(`
+    <h3>添加基金<button data-close>取消</button></h3>
+    <label class="field"><span>基金代码</span>
+      <div class="row"><input id="a-code" inputmode="numeric" maxlength="6" placeholder="6 位数字，例如 110011" autocomplete="off"><button class="small-btn" id="a-lookup">查询</button></div></label>
+    <div id="a-info"></div>
+    <label class="field"><span>每日定投金额（元）</span><input id="a-amount" inputmode="decimal" placeholder="例如 50"></label>
+    <div class="group"><div class="gt">当前持仓</div><div class="hint">从支付宝或天天基金的持仓页抄过来。新开始定投、没有持仓的话可以不填。</div>
+      ${holdingFields('')}
+    </div>
+    <button class="btn primary" id="a-save" disabled>保存</button>`);
+  bindPm();
+  const codeEl = $('#a-code');
+  const lookup = async () => {
+    const code = codeEl.value.trim();
+    if (!/^\d{6}$/.test(code)) { $('#a-info').innerHTML = `<div class="info err">请输入 6 位基金代码</div>`; return; }
+    if (S.funds.some(f => f.code === code)) { $('#a-info').innerHTML = `<div class="info err">这只基金已经添加过了，点列表里的它可以修改</div>`; return; }
+    $('#a-info').innerHTML = `<div class="info">查询中…</div>`; $('#a-save').disabled = true;
+    try {
+      const d = await fetchFund(code);
+      if (codeEl.value.trim() !== code) return;
+      pending = { code, data: d };
+      const last = d.series[d.series.length - 1];
+      $('#a-info').innerHTML = `<div class="info"><b>${esc(d.name)}</b><br><span class="muted num">最新净值 ${last[1].toFixed(4)}（${last[0]}）· 申购费率 ${d.rate}%</span></div>`;
+      $('#h-asof').value = lastTradeBefore(d.series, today());
+      $('#a-save').disabled = false;
+    } catch (e) {
+      pending = null;
+      $('#a-info').innerHTML = `<div class="info err">${esc(e.message)}</div>`;
+    }
+  };
+  $('#a-lookup').onclick = lookup;
+  codeEl.addEventListener('input', () => { if (/^\d{6}$/.test(codeEl.value.trim())) lookup(); else { pending = null; $('#a-save').disabled = true; } });
+  $('#a-save').onclick = () => {
+    if (!pending) return;
+    const amount = num($('#a-amount').value) || 0;
+    let h;
+    try { h = readHolding(pending.data.series); } catch (e) { toast(e.message); return; }
+    const sr = pending.data.series;
+    const f = {
+      id: uid(), code: pending.code, name: pending.data.name, amount, paused: false, fee: null,
+      shares: h ? h.shares : 0, cost: h ? h.cost : 0,
+      asOf: h ? h.asOf : lastTradeBefore(sr, today())
+    };
+    S.funds.push(f); save();
+    storeNav(f.code, pending.data);
+    closeSheet(); render(); idleStatus();
+    toast('已添加 ' + f.name);
+  };
+  setTimeout(() => codeEl.focus(), 50);
+}
+
+// 编辑
+function openEdit(id) {
+  const f = S.funds.find(x => x.id === id); if (!f) return;
+  const r = compute(f);
+  const c = C[f.code];
+  openSheet(`
+    <h3><span>${esc(r.name || f.name || f.code)}</span><button data-close>取消</button></h3>
+    <div class="muted num" style="font-size:13px">${f.code}${r.ok ? ` · 净值 ${r.nav.toFixed(4)}（${r.lastDate}）` : ''}</div>
+    ${r.ok ? `<dl class="kv num">
+      <dt>持有份额</dt><dd>${fmt(r.shares)}</dd>
+      <dt>市值 / 投入</dt><dd>${fmt(r.mv)} / ${fmt(r.cost)}</dd>
+      <dt>持有收益</dt><dd class="${cls(r.profit)}">${signed(r.profit)}（${signed(r.rate)}%）</dd>
+      <dt>自动累计</dt><dd>${f.asOf} 之后 ${r.buys} 笔定投</dd>
+    </dl>` : ''}
+    <label class="field"><span>每日定投金额（元）</span><input id="e-amount" inputmode="decimal" value="${f.amount}"></label>
+    <label class="switch"><span>暂停定投</span><input type="checkbox" id="e-paused" ${f.paused ? 'checked' : ''}></label>
+    <label class="field"><span>申购费率 %（留空用平台费率${c ? ` ${c.rate}%` : ''}）</span><input id="e-fee" inputmode="decimal" value="${f.fee ?? ''}" placeholder="自动"></label>
+    <details class="group"><summary>按支付宝持仓校准</summary>
+      <div class="hint">和支付宝显示的对不上时（分红、扣款失败、卖出等），填入最新持仓，会替换掉之前的推算。</div>
+      ${holdingFields(c ? lastTradeBefore(c.series, today()) : '')}
+    </details>
+    <button class="btn primary" id="e-save">保存</button>
+    <button class="btn danger" id="e-del">删除这只基金</button>`);
+  bindPm();
+  $('#e-save').onclick = async () => {
+    const amount = num($('#e-amount').value) || 0;
+    const paused = $('#e-paused').checked;
+    const feeV = num($('#e-fee').value);
+    const wantsCal = num($('#h-amt').value) !== null || num($('#h-shares').value) !== null;
+    let h = null, fresh = null;
+    if (wantsCal) {
+      const btn = $('#e-save'); btn.disabled = true; btn.textContent = '获取净值中…';
+      try {
+        fresh = await fetchFund(f.code);
+        h = readHolding(fresh.series);
+      } catch (e) { toast(e.message); btn.disabled = false; btn.textContent = '保存'; return; }
+    }
+    materialize(f);  // 之前的定投按旧设置固化
+    if (h) { f.shares = h.shares; f.cost = h.cost; f.asOf = h.asOf; }
+    f.amount = amount; f.paused = paused; f.fee = feeV;
+    save();
+    if (fresh) storeNav(f.code, fresh);  // 截至日期可能提前了，按新日期重新裁剪缓存
+    closeSheet(); render();
+    toast(h ? '已按新持仓校准' : '已保存');
+  };
+  $('#e-del').onclick = () => {
+    if (!confirm(`删除 ${f.name || f.code}？`)) return;
+    S.funds = S.funds.filter(x => x.id !== id);
+    if (!S.funds.some(x => x.code === f.code)) { delete C[f.code]; saveNav(); }
+    save(); closeSheet(); render();
+  };
+}
+
+// 设置
+function openSettings() {
+  openSheet(`
+    <h3>设置<button data-close>完成</button></h3>
+    <button class="btn plain" id="s-export">导出备份</button>
+    <button class="btn plain" id="s-import" style="margin-top:10px">从备份恢复</button>
+    <div class="hint">数据只保存在这台手机的这个 App 里。换手机或清理 Safari 数据前，先导出备份。</div>
+    <div class="group doc">
+      <div class="gt">怎么算的</div>
+      <ul>
+        <li>每只基金记一个“持仓快照”：截至某天的份额和投入。</li>
+        <li>快照之后每个有净值的交易日，按 定投额 ÷ (1+申购费率) ÷ 当日净值 自动加份额，投入加上定投额。</li>
+        <li>市值 = 份额 × 最新净值，收益 = 市值 − 投入。</li>
+        <li>当天的净值一般晚上才公布，公布后当天那笔才会算进去。</li>
+        <li>分红按红利再投资折算。和支付宝差得多时，用“按支付宝持仓校准”重新对一下。</li>
+      </ul>
+      <p class="muted">净值数据来自天天基金网的公开页面，非官方接口，可能失效。</p>
+    </div>`);
+  $('#s-export').onclick = () => {
+    const blob = new Blob([JSON.stringify({ app: 'fund-dca', v: 1, exportedAt: new Date().toISOString(), funds: S.funds }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `基金定投备份-${today()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+  $('#s-import').onclick = () => $('#import-file').click();
+}
+$('#import-file').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try {
+    const j = JSON.parse(await file.text());
+    if (!Array.isArray(j.funds)) throw new Error();
+    if (!confirm(`恢复 ${j.funds.length} 只基金？当前数据会被替换。`)) return;
+    S.funds = j.funds; save(); C = {}; saveNav();
+    closeSheet(); render(); refreshAll(true);
+  } catch (err) { toast('文件格式不对'); }
+});
+
+// ---------- 事件 ----------
+$('#sheet').addEventListener('click', e => { if (e.target.closest('[data-close]')) closeSheet(); });
+$('#list').addEventListener('click', e => { const b = e.target.closest('.fund'); if (b) openEdit(b.dataset.id); });
+$('#sort').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.sort = b.dataset.sort; save(); render(); });
+$('#btn-add').onclick = openAdd;
+$('#btn-settings').onclick = openSettings;
+$('#btn-refresh').onclick = () => refreshAll(true);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAll(false); });
+
+render(); idleStatus(); refreshAll(false);
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
