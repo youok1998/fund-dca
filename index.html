@@ -178,6 +178,8 @@ const $ = s => document.querySelector(s);
 function load(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
 let S = load(KEY, null) || { funds: [], sort: 'mv' };
 let C = load(NAV_KEY, null) || {};
+S.fx = S.fx || { rate: null, manual: false, at: 0 };
+const FX_STALE_MS = 6 * 3600 * 1000, FX_FALLBACK = 7;
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('保存失败：浏览器存储不可用'); } }
 function saveNav() { try { localStorage.setItem(NAV_KEY, JSON.stringify(C)); } catch (e) {} }
 
@@ -193,6 +195,25 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 function num(v) { const n = parseFloat(String(v ?? '').replace(/[,，¥￥\s]/g, '')); return Number.isFinite(n) ? n : null; }
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2400); }
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+// ---------- 美元基金 ----------
+// 美元份额的净值、定投额、持仓都按美元记，汇总时按汇率折成人民币
+const curOf = name => /美元/.test(name || '') ? 'USD' : 'CNY';
+const isUSD = f => f.cur === 'USD';
+const sym = f => isUSD(f) ? '$' : '';
+const unitOf = cur => cur === 'USD' ? '美元' : '元';
+const fxRate = () => S.fx.rate || FX_FALLBACK;
+const toCNY = (f, v) => isUSD(f) ? v * fxRate() : v;
+async function refreshFx(force) {
+  if (S.fx.manual || !S.funds.some(isUSD)) return;
+  if (!force && S.fx.rate && Date.now() - S.fx.at < FX_STALE_MS) return;
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' });
+    const j = await res.json();
+    const r = j && j.rates && +j.rates.CNY;
+    if (r > 0) { S.fx.rate = r; S.fx.at = Date.now(); save(); }
+  } catch (e) { if (force) toast('汇率更新失败，暂用上次的汇率'); }
+}
 
 // 分红按红利再投资折算（现金分红时总价值相同），拆分按比例调整份额
 function parseEvent(s) {
@@ -298,10 +319,15 @@ function materialize(f) {
 function render() {
   const rows = S.funds.map(f => ({ f, r: compute(f) }));
   const ok = rows.filter(x => x.r.ok);
-  const sum = k => ok.reduce((a, x) => a + x.r[k], 0);
+  const sum = k => ok.reduce((a, x) => a + toCNY(x.f, x.r[k]), 0);
   const mv = sum('mv'), cost = sum('cost'), profit = mv - cost, day = sum('dayProfit');
-  const daily = S.funds.filter(f => !f.paused).reduce((a, f) => a + (f.amount || 0), 0);
+  const dailyOf = usd => S.funds.filter(f => !f.paused && isUSD(f) === usd).reduce((a, f) => a + (f.amount || 0), 0);
+  const daily = dailyOf(false), dailyUSD = dailyOf(true);
   const activeN = S.funds.filter(f => !f.paused && f.amount > 0).length;
+  const hasUSD = S.funds.some(isUSD);
+  const fxNote = !hasUSD ? '' : S.fx.rate
+    ? `美元基金按 1 美元 = ${S.fx.rate.toFixed(4)} 元折算${S.fx.manual ? '（手动汇率）' : ''}`
+    : `还没获取到汇率，美元基金暂按 1 美元 = ${FX_FALLBACK} 元估算`;
   const lastDate = ok.reduce((a, x) => x.r.lastDate > a ? x.r.lastDate : a, '');
   const missing = rows.length - ok.length;
 
@@ -315,22 +341,25 @@ function render() {
     </div>
     <div class="foot">
       <span>最近一日${lastDate ? `（${short(lastDate)}）` : ''} <b class="num ${cls(day)}">${signed(day)}</b></span>
-      <span>每日定投 <b class="num">¥${fmt(daily, daily % 1 ? 2 : 0)}</b> · ${activeN} 只</span>
+      <span>每日定投 <b class="num">¥${fmt(daily, daily % 1 ? 2 : 0)}${dailyUSD ? ` + $${fmt(dailyUSD, dailyUSD % 1 ? 2 : 0)}` : ''}</b> · ${activeN} 只</span>
     </div>
+    ${fxNote ? `<div class="hint">${fxNote}</div>` : ''}
     ${missing ? `<div class="hint">${missing} 只基金还没拿到净值，未计入合计</div>` : ''}`;
 
   document.querySelectorAll('#sort button').forEach(b => b.classList.toggle('on', b.dataset.sort === S.sort));
   $('#list-title').textContent = `我的基金（${S.funds.length}）`;
 
   const key = { mv: 'mv', profit: 'profit', rate: 'rate', day: 'dayPct' }[S.sort] || 'mv';
-  rows.sort((a, b) => (b.r.ok - a.r.ok) || ((b.r[key] || 0) - (a.r[key] || 0)));
+  const sortVal = x => { const v = x.r[key] || 0; return key === 'mv' || key === 'profit' ? toCNY(x.f, v) : v; };
+  rows.sort((a, b) => (b.r.ok - a.r.ok) || (sortVal(b) - sortVal(a)));
 
   if (!rows.length) {
     $('#list').innerHTML = `<div class="empty">还没有基金<br>点右下角 <b>+</b> 添加第一只</div>`;
     return;
   }
   $('#list').innerHTML = rows.map(({ f, r }) => {
-    const plan = f.paused ? '<span class="tag">已暂停</span>' : `每日 ¥${fmt(f.amount, f.amount % 1 ? 2 : 0)}`;
+    const plan = f.paused ? '<span class="tag">已暂停</span>' : `每日 ${isUSD(f) ? '$' : '¥'}${fmt(f.amount, f.amount % 1 ? 2 : 0)}`;
+    const usdTag = isUSD(f) ? '<span class="tag">美元</span>' : '';
     if (!r.ok) return `
       <button class="card fund" data-id="${f.id}">
         <div class="r1"><span class="name">${esc(f.name || f.code)}</span><span class="muted">等待净值…</span></div>
@@ -338,9 +367,9 @@ function render() {
       </button>`;
     return `
       <button class="card fund" data-id="${f.id}">
-        <div class="r1"><span class="name">${esc(r.name || f.name)}</span><span class="mv num">${fmt(r.mv)}</span></div>
-        <div class="r2"><span class="muted num">投入 ${fmt(r.cost)}</span><span class="num ${cls(r.profit)}">${signed(r.profit)}（${signed(r.rate)}%）</span></div>
-        <div class="r3 num"><span>${f.code}</span><span>净值 ${r.nav.toFixed(4)}（${short(r.lastDate)}）<span class="${cls(r.dayPct)}">${signed(r.dayPct)}%</span></span><span>${plan}</span></div>
+        <div class="r1"><span class="name">${esc(r.name || f.name)}</span><span class="mv num">${sym(f)}${fmt(r.mv)}</span></div>
+        <div class="r2"><span class="muted num">投入 ${sym(f)}${fmt(r.cost)}</span><span class="num ${cls(r.profit)}">${signed(r.profit)}（${signed(r.rate)}%）</span></div>
+        <div class="r3 num"><span>${f.code}</span>${usdTag}<span>净值 ${r.nav.toFixed(4)}（${short(r.lastDate)}）<span class="${cls(r.dayPct)}">${signed(r.dayPct)}%</span></span><span>${plan}</span></div>
       </button>`;
   }).join('');
 }
@@ -356,6 +385,7 @@ function idleStatus() {
 let busy = false;
 async function refreshAll(force) {
   if (busy) return;
+  refreshFx(force).then(render);
   const codes = [...new Set(S.funds.map(f => f.code))];
   const todo = codes.filter(c => force || !C[c] || Date.now() - C[c].fetchedAt > STALE_MS);
   if (!todo.length) { if (force) toast('没有需要更新的基金'); return; }
@@ -366,7 +396,7 @@ async function refreshAll(force) {
     try {
       const d = await fetchFund(todo[i]);
       storeNav(todo[i], d);
-      S.funds.forEach(f => { if (f.code === todo[i] && d.name) f.name = d.name; });
+      S.funds.forEach(f => { if (f.code === todo[i] && d.name) { f.name = d.name; f.cur = f.cur || curOf(d.name); } });
     } catch (e) { fails.push(todo[i]); }
     render();
   }
@@ -382,9 +412,9 @@ function openSheet(html) { $('#sheet').innerHTML = `<div class="grab"></div>${ht
 function closeSheet() { $('#overlay').classList.remove('open'); }
 $('#overlay').addEventListener('click', e => { if (e.target.id === 'overlay') closeSheet(); });
 
-const holdingFields = (hintDate) => `
-  <label class="field"><span>持有金额（元）</span><input id="h-amt" inputmode="decimal" placeholder="例如 12345.67"></label>
-  <label class="field"><span>持有收益（元，亏损点 ± 变成负数）</span>
+const holdingFields = (hintDate, unit = '元') => `
+  <label class="field"><span>持有金额（<span class="unit">${unit}</span>）</span><input id="h-amt" inputmode="decimal" placeholder="例如 12345.67"></label>
+  <label class="field"><span>持有收益（<span class="unit">${unit}</span>，亏损点 ± 变成负数）</span>
     <div class="row"><input id="h-profit" inputmode="decimal" placeholder="例如 456.78"><button type="button" class="pm" id="h-pm">±</button></div></label>
   <label class="field"><span>持有份额（选填，填了更准）</span><input id="h-shares" inputmode="decimal" placeholder="不填则按 持有金额 ÷ 净值 推算"></label>
   <label class="field"><span>持仓截至的净值日期</span><input type="date" id="h-asof" value="${hintDate || ''}"></label>
@@ -416,7 +446,7 @@ function openAdd() {
     <label class="field"><span>基金代码</span>
       <div class="row"><input id="a-code" inputmode="numeric" maxlength="6" placeholder="6 位数字，例如 110011" autocomplete="off"><button class="small-btn" id="a-lookup">查询</button></div></label>
     <div id="a-info"></div>
-    <label class="field"><span>每日定投金额（元）</span><input id="a-amount" inputmode="decimal" placeholder="例如 50"></label>
+    <label class="field"><span>每日定投金额（<span class="unit">元</span>）</span><input id="a-amount" inputmode="decimal" placeholder="例如 50"></label>
     <div class="group"><div class="gt">当前持仓</div><div class="hint">从支付宝或天天基金的持仓页抄过来。新开始定投、没有持仓的话可以不填。</div>
       ${holdingFields('')}
     </div>
@@ -433,7 +463,9 @@ function openAdd() {
       if (codeEl.value.trim() !== code) return;
       pending = { code, data: d };
       const last = d.series[d.series.length - 1];
-      $('#a-info').innerHTML = `<div class="info"><b>${esc(d.name)}</b><br><span class="muted num">最新净值 ${last[1].toFixed(4)}（${last[0]}）· 申购费率 ${d.rate}%</span></div>`;
+      const cur = curOf(d.name);
+      document.querySelectorAll('#sheet .unit').forEach(e => { e.textContent = unitOf(cur); });
+      $('#a-info').innerHTML = `<div class="info"><b>${esc(d.name)}</b><br><span class="muted num">最新净值 ${last[1].toFixed(4)}（${last[0]}）· 申购费率 ${d.rate}%</span>${cur === 'USD' ? '<br>美元份额：定投金额和持仓都按<b>美元</b>填' : ''}</div>`;
       $('#h-asof').value = lastTradeBefore(d.series, today());
       $('#a-save').disabled = false;
     } catch (e) {
@@ -450,7 +482,7 @@ function openAdd() {
     try { h = readHolding(pending.data.series); } catch (e) { toast(e.message); return; }
     const sr = pending.data.series;
     const f = {
-      id: uid(), code: pending.code, name: pending.data.name, amount, paused: false, fee: null,
+      id: uid(), code: pending.code, name: pending.data.name, cur: curOf(pending.data.name), amount, paused: false, fee: null,
       shares: h ? h.shares : 0, cost: h ? h.cost : 0,
       asOf: h ? h.asOf : lastTradeBefore(sr, today())
     };
@@ -472,16 +504,16 @@ function openEdit(id) {
     <div class="muted num" style="font-size:13px">${f.code}${r.ok ? ` · 净值 ${r.nav.toFixed(4)}（${r.lastDate}）` : ''}</div>
     ${r.ok ? `<dl class="kv num">
       <dt>持有份额</dt><dd>${fmt(r.shares)}</dd>
-      <dt>市值 / 投入</dt><dd>${fmt(r.mv)} / ${fmt(r.cost)}</dd>
+      <dt>市值 / 投入</dt><dd>${sym(f)}${fmt(r.mv)} / ${sym(f)}${fmt(r.cost)}</dd>
       <dt>持有收益</dt><dd class="${cls(r.profit)}">${signed(r.profit)}（${signed(r.rate)}%）</dd>
       <dt>自动累计</dt><dd>${f.asOf} 之后 ${r.buys} 笔定投</dd>
     </dl>` : ''}
-    <label class="field"><span>每日定投金额（元）</span><input id="e-amount" inputmode="decimal" value="${f.amount}"></label>
+    <label class="field"><span>每日定投金额（${unitOf(f.cur)}）</span><input id="e-amount" inputmode="decimal" value="${f.amount}"></label>
     <label class="switch"><span>暂停定投</span><input type="checkbox" id="e-paused" ${f.paused ? 'checked' : ''}></label>
     <label class="field"><span>申购费率 %（留空用平台费率${c ? ` ${c.rate}%` : ''}）</span><input id="e-fee" inputmode="decimal" value="${f.fee ?? ''}" placeholder="自动"></label>
     <details class="group"><summary>按支付宝持仓校准</summary>
       <div class="hint">和支付宝显示的对不上时（分红、扣款失败、卖出等），填入最新持仓，会替换掉之前的推算。</div>
-      ${holdingFields(c ? lastTradeBefore(c.series, today()) : '')}
+      ${holdingFields(c ? lastTradeBefore(c.series, today()) : '', unitOf(f.cur))}
     </details>
     <button class="btn primary" id="e-save">保存</button>
     <button class="btn danger" id="e-del">删除这只基金</button>`);
@@ -522,6 +554,11 @@ function openSettings() {
     <button class="btn plain" id="s-export">导出备份</button>
     <button class="btn plain" id="s-import" style="margin-top:10px">从备份恢复</button>
     <div class="hint">数据只保存在这台手机的这个 App 里。换手机或清理 Safari 数据前，先导出备份。</div>
+    <div class="group">
+      <div class="gt">美元汇率</div>
+      <label class="field"><span>1 美元 = ? 元（留空自动获取，用于把美元基金折成人民币合计）</span>
+        <input id="s-fx" inputmode="decimal" value="${S.fx.manual ? S.fx.rate : ''}" placeholder="${S.fx.rate && !S.fx.manual ? '自动：' + S.fx.rate.toFixed(4) : '自动'}"></label>
+    </div>
     <div class="group doc">
       <div class="gt">怎么算的</div>
       <ul>
@@ -534,7 +571,7 @@ function openSettings() {
       <p class="muted">净值数据来自天天基金网的公开页面，非官方接口，可能失效。</p>
     </div>`);
   $('#s-export').onclick = () => {
-    const blob = new Blob([JSON.stringify({ app: 'fund-dca', v: 1, exportedAt: new Date().toISOString(), funds: S.funds }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ app: 'fund-dca', v: 1, exportedAt: new Date().toISOString(), funds: S.funds, fx: S.fx }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `基金定投备份-${today()}.json`;
@@ -542,6 +579,11 @@ function openSettings() {
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   };
   $('#s-import').onclick = () => $('#import-file').click();
+  $('#s-fx').onchange = e => {
+    const v = num(e.target.value);
+    if (v > 0) { S.fx = { rate: v, manual: true, at: Date.now() }; save(); render(); toast('已改为手动汇率'); }
+    else { S.fx.manual = false; S.fx.at = 0; save(); refreshFx(true).then(render); toast('已改为自动获取汇率'); }
+  };
 }
 $('#import-file').addEventListener('change', async e => {
   const file = e.target.files[0]; e.target.value = '';
@@ -550,7 +592,7 @@ $('#import-file').addEventListener('change', async e => {
     const j = JSON.parse(await file.text());
     if (!Array.isArray(j.funds)) throw new Error();
     if (!confirm(`恢复 ${j.funds.length} 只基金？当前数据会被替换。`)) return;
-    S.funds = j.funds; save(); C = {}; saveNav();
+    S.funds = j.funds; if (j.fx) S.fx = j.fx; save(); C = {}; saveNav();
     closeSheet(); render(); refreshAll(true);
   } catch (err) { toast('文件格式不对'); }
 });
